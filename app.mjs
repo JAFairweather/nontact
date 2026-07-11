@@ -10,12 +10,12 @@
 // asymmetry is visible, not hidden.
 
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools'
-import { LiveRelay } from '../liverelay.mjs'
+import { LiveRelay } from './lib/liverelay.mjs'
 import {
   localSigner, newScopeKey, publishScope, grant, rotateScope, deleteScope,
   receiveGrants, latestGrants, fetchScope,
   loadGrantIndex, saveGrantIndex, toIssuedEntry, fromIssuedEntry,
-} from '../nipxx.mjs'
+} from './lib/nipxx.mjs'
 
 const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net']
 
