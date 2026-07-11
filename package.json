@@ -1,0 +1,16 @@
+{
+  "name": "nontact",
+  "version": "0.1.0",
+  "description": "Nontact — the no-maintenance address book. A NIP-DA client where nobody maintains contact data about anyone else.",
+  "type": "module",
+  "scripts": {
+    "web": "node serve.mjs",
+    "seed": "node seed.mjs",
+    "sync-lib": "cp ../nip-demo/nipxx.mjs ../nip-demo/liverelay.mjs ../nip-demo/relay.mjs lib/"
+  },
+  "dependencies": {
+    "nostr-tools": "^2.23.9",
+    "ws": "^8.0.0"
+  },
+  "license": "MIT"
+}
