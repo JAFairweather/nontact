@@ -16,6 +16,7 @@ import {
   receiveGrants, latestGrants, fetchScope,
   loadGrantIndex, saveGrantIndex, toIssuedEntry, fromIssuedEntry,
 } from './lib/nipxx.mjs'
+import { nip07Signer, nip46Signer, serializeSession, parseSession, signerFromSession } from './lib/nave-connect.mjs'
 
 const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net']
 
@@ -82,24 +83,23 @@ function showTab(t) {
 }
 for (const b of document.querySelectorAll('.tab')) b.onclick = () => showTab(b.dataset.tab)
 
-// NIP-07: the browser extension holds the key; the page only ever sees
-// signatures and nip44 plaintexts. Maps 1:1 onto the lib's signer interface.
-function nip07Signer() {
-  const n = window.nostr
-  let pub = null
-  return {
-    getPublicKey: async () => (pub ??= await n.getPublicKey()),
-    signEvent: (event) => n.signEvent(event),
-    nip44Encrypt: (pk, plaintext) => n.nip44.encrypt(pk, plaintext),
-    nip44Decrypt: (pk, ciphertext) => n.nip44.decrypt(pk, ciphertext),
-  }
-}
+// Sign-in via nave-connect: nip07 (extension) + nip46 (bunker) come from the
+// shared module; local keys stay on nipxx's localSigner. (The module's own
+// localSigner has no nip44, and everything here — grants, index, scope
+// fetches — is NIP-44 all the way down; signerFromSession returning null for
+// `local` is the module telling the app to rebuild from its own key material.)
+function keySigner(sk) { return { kind: 'local', ...localSigner(sk) } }
 
 async function login(s, remember) {
   signer = s
-  try { me = await signer.getPublicKey() }
-  catch (err) { $('err').textContent = `extension refused: ${err.message}`; return }
-  sessionStorage.setItem('nontact-login', remember)
+  try { me = await signer.getPublicKey() }   // nip46: first use → lazy bunker connect
+  catch (err) {
+    signer = null
+    try { await s.close?.() } catch { /* best effort */ }
+    $('err').textContent = `sign-in failed: ${err.message}`
+    return
+  }
+  if (remember) sessionStorage.setItem('nontact-login', remember)
   relay ??= new LiveRelay(RELAYS)
   $('login').style.display = 'none'
   $('me').style.display = 'flex'
@@ -108,17 +108,52 @@ async function login(s, remember) {
   const npub = nip19.npubEncode(me)
   $('my-npub').textContent = npub.slice(0, 12) + '…' + npub.slice(-4)
   $('my-npub').onclick = () => navigator.clipboard.writeText(npub)
+  $('me-kind').textContent =
+    { nip07: 'extension', nip46: 'bunker', local: 'local key' }[signer.kind] ?? 'local key'
   load()
 }
 
 const hexOf = (bytes) => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 
+// NIP-46: the bunker may want a one-time interactive approval — surface its
+// auth_url as a link rather than window.open (popup blockers eat those).
+function onAuthUrl(url) {
+  $('bunker-auth').style.display = ''
+  $('bunker-auth').innerHTML = `The bunker asks for a one-time approval:
+    <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">open its dashboard</a>,
+    approve, then return here.`
+}
+
+$('bunker-go').onclick = async () => {
+  const uri = $('bunker-uri').value.trim()
+  if (!uri) { $('err').textContent = 'Paste the bunker:// URI from your remote signer first.'; return }
+  $('err').textContent = 'connecting to the bunker over its relays… (approve there if asked)'
+  $('bunker-go').disabled = true
+  try {
+    const s = nip46Signer(uri, { onAuthUrl })
+    await login(s, serializeSession('nip46', { uri, clientSecretHex: s.clientSecretHex }))
+    if (me) { $('err').textContent = ''; $('bunker-auth').style.display = 'none' }
+  } finally { $('bunker-go').disabled = false }
+}
+$('bunker-uri').onkeydown = (e) => { if (e.key === 'Enter') $('bunker-go').onclick() }
+
+// The local key is deliberately not a headline option (Director, nact#16):
+// it stays available, behind this explicit reveal.
+$('advanced-toggle').onclick = () => {
+  const open = $('advanced').style.display === 'none'
+  $('advanced').style.display = open ? '' : 'none'
+  $('advanced-toggle').textContent = open
+    ? 'Hide the local-key option'
+    : 'Advanced: use a local key in this tab (demo / throwaway)'
+  if (open) $('nsec').focus()
+}
+
 $('go').onclick = () => {
-  try { const k = parseKey($('nsec').value); login(localSigner(k), hexOf(k)) }
+  try { const k = parseKey($('nsec').value); login(keySigner(k), hexOf(k)) }
   catch { $('err').textContent = 'Could not parse that — expected nsec1… or 64 hex chars.' }
 }
 $('nsec').onkeydown = (e) => { if (e.key === 'Enter') $('go').onclick() }
-$('gen').onclick = () => { const k = generateSecretKey(); login(localSigner(k), hexOf(k)) }
+$('gen').onclick = () => { const k = generateSecretKey(); login(keySigner(k), hexOf(k)) }
 $('nip07').onclick = () => {
   if (!window.nostr?.nip44) {
     $('err').textContent = 'No NIP-07 extension found (or it lacks nip44 support). Try Alby or nos2x.'
@@ -127,14 +162,25 @@ $('nip07').onclick = () => {
   login(nip07Signer(), 'nip07')
 }
 $('refresh').onclick = () => load()
-$('logout').onclick = () => { sessionStorage.removeItem('nontact-login'); location.hash = ''; location.reload() }
+$('logout').onclick = () => {
+  try { signer?.close?.() } catch { /* best effort */ }   // drop a live bunker pairing
+  sessionStorage.removeItem('nontact-login'); location.hash = ''; location.reload()
+}
 
+// Boot order via nave-connect's parseSession — a bare-hex legacy remember
+// still reads as `local`, so live tab sessions survive the upgrade. nip46
+// remembers carry the bunker URI + client key, so a reload re-pairs the SAME
+// bunker session without re-approval. All of it rides sessionStorage only:
+// Nontact is session-only by design — no at-rest key, no persistence.
 const saved = sessionStorage.getItem('nontact-login')
-if (saved === 'nip07') {
+const sess = parseSession(saved)
+if (sess?.kind === 'nip07') {
   // extensions inject window.nostr after page scripts run — give it a beat
   setTimeout(() => { if (window.nostr?.nip44) login(nip07Signer(), 'nip07') }, 250)
-} else if (saved) {
-  login(localSigner(Uint8Array.from(saved.match(/../g), h => parseInt(h, 16))), saved)
+} else if (sess?.kind === 'nip46') {
+  login(signerFromSession(sess, { onAuthUrl }), saved)
+} else if (sess?.kind === 'local') {
+  login(keySigner(parseKey(sess.hexKey)), saved)
 }
 
 // ------------------------------------------------------------------ load
