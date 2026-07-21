@@ -17,6 +17,7 @@ import {
   loadGrantIndex, saveGrantIndex, toIssuedEntry, fromIssuedEntry,
 } from './lib/nipxx.mjs'
 import { nip07Signer, nip46Signer, serializeSession, parseSession, signerFromSession } from './lib/nave-connect.mjs'
+import { renderTitlebar, updateTitlebar } from './lib/nave-titlebar.mjs'
 
 const RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net']
 
@@ -102,14 +103,12 @@ async function login(s, remember) {
   if (remember) sessionStorage.setItem('nontact-login', remember)
   relay ??= new LiveRelay(RELAYS)
   $('login').style.display = 'none'
-  $('me').style.display = 'flex'
   $('tabs').style.display = 'flex'
   showTab(location.hash === '#card' ? 'card' : 'book')
-  const npub = nip19.npubEncode(me)
-  $('my-npub').textContent = npub.slice(0, 12) + '…' + npub.slice(-4)
-  $('my-npub').onclick = () => navigator.clipboard.writeText(npub)
-  $('me-kind').textContent =
-    { nip07: 'extension', nip46: 'bunker', local: 'local key' }[signer.kind] ?? 'local key'
+  updateTitlebar('#titlebar', {
+    npub: nip19.npubEncode(me), kind: signer.kind,
+    onRefresh: () => load(), onLogout: logout,
+  })
   load()
 }
 
@@ -161,11 +160,19 @@ $('nip07').onclick = () => {
   }
   login(nip07Signer(), 'nip07')
 }
-$('refresh').onclick = () => load()
-$('logout').onclick = () => {
+function logout() {
   try { signer?.close?.() } catch { /* best effort */ }   // drop a live bunker pairing
   sessionStorage.removeItem('nontact-login'); location.hash = ''; location.reload()
 }
+
+// The unified Nave title bar (nact#16): boots signed out (brand only — the
+// login card in <main> is the sign-in affordance); login() flips it via
+// updateTitlebar. Refresh / Log out / copy-npub live inside the component.
+const NONTACT_SEAL = `<svg viewBox="0 0 32 32" aria-hidden="true">
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#0b0906" stroke="#8fae6a" stroke-opacity=".5" stroke-width="1.2"/>
+  <g transform="translate(4 4)" fill="none" stroke="#8fae6a" stroke-width="1.6"><circle cx="9.5" cy="12" r="6"/><circle cx="14.5" cy="12" r="6"/></g>
+</svg>`
+renderTitlebar('#titlebar', { appName: 'Nontact', tagline: 'the no-maintenance address book', sealSvg: NONTACT_SEAL })
 
 // Boot order via nave-connect's parseSession — a bare-hex legacy remember
 // still reads as `local`, so live tab sessions survive the upgrade. nip46

@@ -47,25 +47,8 @@
     background-attachment: fixed;
   }
 
-  /* ── header: seal · wordmark · tagline ───────────────────────────────── */
-  header {
-    display: flex; align-items: center; gap: 14px; padding: 26px 28px 0;
-    max-width: 1180px; margin: 0 auto;
-  }
-  header .brand-seal { width: 58px; height: 58px; flex: none; }
-  header .brand-seal svg { width: 100%; height: 100%; display: block; }
-  header h1 {
-    margin: 0; font-family: var(--sans); font-weight: 800; font-size: 27px;
-    letter-spacing: 0.14em; text-transform: uppercase; color: var(--text); align-self: center;
-  }
-  header h1 span { color: var(--accent); }
-  header .tag {
-    color: var(--dim); font-family: var(--sans); font-size: 12px; font-weight: 500;
-    letter-spacing: 0.08em; text-transform: uppercase; align-self: center;
-  }
-  header .spacer { flex: 1; }
-  header button { margin-left: 8px; }
-
+  /* ── header: the unified Nave title bar (lib/nave-titlebar.mjs) renders
+     into <header id="titlebar">; its styles ship inside the component. ── */
   main { max-width: 1180px; margin: 0 auto; padding: 22px 28px 40px; }
 
   /* ── buttons: mono, bordered, accent on commit ──────────────────────── */
@@ -115,9 +98,6 @@
   #login .alt a { color: var(--accent); cursor: pointer; }
   #login .alt code, #login code { font-family: var(--mono); color: var(--gold); font-size: 12.5px; }
   #login .err { color: var(--warn); margin-top: 12px; font-size: 13px; min-height: 1em; font-family: var(--mono); }
-
-  #me { display: none; align-items: center; gap: 10px; color: var(--dim); font-size: 12px; font-family: var(--mono); }
-  #me code { font-family: var(--mono); color: var(--text); cursor: pointer; }
 
   /* ── tabs ───────────────────────────────────────────────────────────── */
   #tabs { display: none; gap: 4px; margin: 20px 0 4px; border-bottom: 1px solid var(--line); }
@@ -232,21 +212,10 @@
 <div id="alpha">alpha — built on draft NIP-DA (<a href="https://github.com/nostr-protocol/nips/pull/2411">review pending</a>);
   kind numbers may change. Use a throwaway key or NIP-07 test profile and treat
   data as ephemeral. <a href="https://github.com/JAFairweather/nontact">code</a></div>
-<header>
-  <span class="brand-seal"><svg viewBox="0 0 32 32" role="img" aria-label="Nontact">
-    <rect x="1" y="1" width="30" height="30" rx="7" fill="#0b0906" stroke="#8fae6a" stroke-opacity=".5" stroke-width="1.2"/>
-    <g transform="translate(4 4)" fill="none" stroke="#8fae6a" stroke-width="1.6"><circle cx="9.5" cy="12" r="6"/><circle cx="14.5" cy="12" r="6"/></g>
-  </svg></span>
-  <h1>N<span>on</span>tact</h1>
-  <div class="tag">the no-maintenance address book</div>
-  <div class="spacer"></div>
-  <div id="me">
-    <span class="badge" id="me-kind" title="how this session signs"></span>
-    <code id="my-npub" title="click to copy"></code>
-    <button id="refresh">Refresh</button>
-    <button id="logout">Log out</button>
-  </div>
-</header>
+<!-- The unified Nave title bar (nact#16) — rendered by lib/nave-titlebar.mjs
+     from app.mjs: seal + wordmark; signed in — signer-kind badge,
+     click-to-copy npub pill, Refresh, Log out. -->
+<header id="titlebar"></header>
 <main>
   <section id="login">
     <h2>Sign in</h2>
